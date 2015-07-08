@@ -48,6 +48,12 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.CreateModel(
+            name='BookmarkedProjects',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+            ],
+        ),
+        migrations.CreateModel(
             name='Category',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
@@ -126,10 +132,14 @@ class Migration(migrations.Migration):
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('name', models.CharField(max_length=128, error_messages={b'required': b'Please enter the module name!'})),
                 ('description', models.TextField(error_messages={b'required': b'Please enter the module description!'})),
-                ('keywords', models.TextField()),
-                ('status', models.IntegerField(default=1, choices=[(1, b'Created'), (2, b'In Review'), (3, b'In Progress'), (4, b'Finished')])),
-                ('repetition', models.IntegerField()),
-                ('module_timeout', models.IntegerField()),
+                ('keywords', models.TextField(null=True)),
+                ('status', models.IntegerField(default=1, choices=[(1, b'Created'), (2, b'In Review'), (3, b'In Progress'), (4, b'Completed')])),
+                ('price', models.FloatField()),
+                ('repetition', models.IntegerField(default=1)),
+                ('module_timeout', models.IntegerField(default=0)),
+                ('has_data_set', models.BooleanField(default=False)),
+                ('data_set_location', models.CharField(default=b'No data set', max_length=256, null=True)),
+                ('task_time', models.FloatField(default=0)),
                 ('deleted', models.BooleanField(default=False)),
                 ('created_timestamp', models.DateTimeField(auto_now_add=True)),
                 ('last_updated', models.DateTimeField(auto_now=True)),
@@ -165,6 +175,13 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.CreateModel(
+            name='ModuleTemplate',
+            fields=[
+                ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
+                ('module', models.ForeignKey(to='crowdsourcing.Module')),
+            ],
+        ),
+        migrations.CreateModel(
             name='PasswordResetModel',
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
@@ -182,7 +199,8 @@ class Migration(migrations.Migration):
                 ('start_date', models.DateTimeField(auto_now_add=True)),
                 ('end_date', models.DateTimeField(auto_now_add=True)),
                 ('description', models.CharField(default=b'', max_length=1024)),
-                ('keywords', models.TextField()),
+                ('keywords', models.TextField(null=True)),
+                ('save_to_drive', models.BooleanField(default=False)),
                 ('deleted', models.BooleanField(default=False)),
                 ('created_timestamp', models.DateTimeField(auto_now_add=True)),
                 ('last_updated', models.DateTimeField(auto_now=True)),
@@ -329,11 +347,12 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('name', models.CharField(max_length=128, error_messages={b'required': b'Please enter the template name!'})),
-                ('source_html', models.TextField()),
+                ('source_html', models.TextField(default=None, null=True)),
+                ('price', models.FloatField(default=0)),
+                ('share_with_others', models.BooleanField(default=False)),
                 ('deleted', models.BooleanField(default=False)),
                 ('created_timestamp', models.DateTimeField(auto_now_add=True)),
                 ('last_updated', models.DateTimeField(auto_now=True)),
-                ('owner', models.ForeignKey(to='crowdsourcing.Requester')),
             ],
         ),
         migrations.CreateModel(
@@ -341,10 +360,18 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.AutoField(verbose_name='ID', serialize=False, auto_created=True, primary_key=True)),
                 ('name', models.CharField(max_length=128, error_messages={b'required': b'Please enter the name of the template item!'})),
+                ('id_string', models.CharField(max_length=128)),
+                ('role', models.CharField(max_length=16)),
+                ('icon', models.CharField(max_length=256, null=True)),
+                ('data_source', models.CharField(max_length=256, null=True)),
+                ('layout', models.CharField(default=b'column', max_length=16)),
+                ('type', models.CharField(max_length=16)),
+                ('sub_type', models.CharField(max_length=16)),
+                ('values', models.TextField(null=True)),
                 ('deleted', models.BooleanField(default=False)),
                 ('created_timestamp', models.DateTimeField(auto_now_add=True)),
                 ('last_updated', models.DateTimeField(auto_now=True)),
-                ('template', models.ForeignKey(to='crowdsourcing.Template')),
+                ('template', models.ForeignKey(related_name='template_items', to='crowdsourcing.Template')),
             ],
         ),
         migrations.CreateModel(
@@ -483,6 +510,11 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(to='crowdsourcing.UserProfile'),
         ),
         migrations.AddField(
+            model_name='template',
+            name='owner',
+            field=models.ForeignKey(to='crowdsourcing.UserProfile'),
+        ),
+        migrations.AddField(
             model_name='taskworkerresult',
             name='template_item',
             field=models.ForeignKey(to='crowdsourcing.TemplateItem'),
@@ -518,6 +550,11 @@ class Migration(migrations.Migration):
             field=models.ForeignKey(related_name='project_owner', to='crowdsourcing.Requester'),
         ),
         migrations.AddField(
+            model_name='moduletemplate',
+            name='template',
+            field=models.ForeignKey(to='crowdsourcing.Template'),
+        ),
+        migrations.AddField(
             model_name='modulereview',
             name='worker',
             field=models.ForeignKey(to='crowdsourcing.Worker'),
@@ -540,7 +577,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='module',
             name='project',
-            field=models.ForeignKey(to='crowdsourcing.Project'),
+            field=models.ForeignKey(related_name='modules', to='crowdsourcing.Project'),
+        ),
+        migrations.AddField(
+            model_name='module',
+            name='template',
+            field=models.ManyToManyField(to='crowdsourcing.Template', through='crowdsourcing.ModuleTemplate'),
         ),
         migrations.AddField(
             model_name='friendship',
@@ -561,6 +603,16 @@ class Migration(migrations.Migration):
             model_name='city',
             name='country',
             field=models.ForeignKey(to='crowdsourcing.Country'),
+        ),
+        migrations.AddField(
+            model_name='bookmarkedprojects',
+            name='profile',
+            field=models.ForeignKey(to='crowdsourcing.UserProfile'),
+        ),
+        migrations.AddField(
+            model_name='bookmarkedprojects',
+            name='project',
+            field=models.ForeignKey(to='crowdsourcing.Project'),
         ),
         migrations.AddField(
             model_name='address',
